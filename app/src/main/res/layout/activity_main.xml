@@ -257,7 +257,6 @@
         android:background="@color/surface"
         app:menu="@menu/bottom_nav_menu"
         app:itemIconTint="@color/bottom_nav_selector"
-        app:itemTextColor="@color/bottom_nav_selector"
-        app:selectedItemId="@id/nav_home" />
+        app:itemTextColor="@color/bottom_nav_selector" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
