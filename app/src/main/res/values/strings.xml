@@ -1,0 +1,89 @@
+<resources>
+    <string name="app_name">DexUltra Booster Pro</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_sensitivity">الحساسية</string>
+    <string name="nav_tips">النصائح</string>
+    <string name="nav_ping">تحسين البنق</string>
+
+    <!-- Splash -->
+    <string name="splash_title">DexUltra Booster Pro</string>
+    <string name="splash_subtitle">مُحسّن ببجي موبايل الاحترافي</string>
+
+    <!-- Main / Booster -->
+    <string name="boost_button">🚀 تعزيز الأداء</string>
+    <string name="boost_active">⚡ التعزيز نشط</string>
+    <string name="boost_stop">⏹ إيقاف التعزيز</string>
+    <string name="status_ready">جاهز للتعزيز</string>
+    <string name="status_boosting">جاري تحسين الأداء…</string>
+    <string name="status_done">تم تطبيق التحسينات!</string>
+    <string name="inject_files">💉 حقن ملفات 120 FPS</string>
+    <string name="inject_success">تم حقن الملفات بنجاح ✅</string>
+    <string name="inject_fail">فشل الحقن – تأكد من Shizuku ❌</string>
+    <string name="shizuku_not_running">Shizuku غير مشغّل!</string>
+    <string name="shizuku_connect">ربط Shizuku</string>
+    <string name="overlay_toggle">تفعيل ماشر الصندوق</string>
+    <string name="fps_label">FPS الحالي</string>
+    <string name="ram_label">RAM المستخدمة</string>
+    <string name="temp_label">حرارة المعالج</string>
+
+    <!-- File Injection -->
+    <string name="section_files">حقن ملفات ببجي</string>
+    <string name="pubg_global">ببجي جلوبال</string>
+    <string name="pubg_kr">ببجي كوريا</string>
+    <string name="pubg_lite">ببجي لايت</string>
+    <string name="file_usercustom">UserCustom.ini (120 FPS)</string>
+    <string name="file_activesav">Active.sav (تعريف الجهاز)</string>
+    <string name="select_version">اختر إصدار اللعبة</string>
+
+    <!-- Sensitivity -->
+    <string name="sensitivity_title">إعدادات الحساسية</string>
+    <string name="gyro_on">مع جيروسكوب</string>
+    <string name="gyro_off">بدون جيروسكوب</string>
+    <string name="type_classic">كلاسيكي</string>
+    <string name="type_warehouse">مستودع</string>
+    <string name="type_headshot">هيدشوت</string>
+    <string name="type_custom">مخصص</string>
+    <string name="sensitivity_camera">حساسية الكاميرا</string>
+    <string name="sensitivity_ads">حساسية ADS</string>
+    <string name="sensitivity_gyro">حساسية الجيرو</string>
+    <string name="sensitivity_recoil">التحكم بالارتداد</string>
+    <string name="apply_sensitivity">تطبيق الإعدادات</string>
+    <string name="reset_sensitivity">إعادة تعيين</string>
+    <string name="copy_sensitivity">نسخ الإعدادات</string>
+
+    <!-- Tips -->
+    <string name="tips_title">نصائح الاحتراف</string>
+    <string name="tips_subtitle">تحسين أداء ببجي موبايل</string>
+
+    <!-- Ping Optimizer -->
+    <string name="ping_title">تحسين البنق</string>
+    <string name="ping_current">البنق الحالي</string>
+    <string name="ping_ms">ms</string>
+    <string name="btn_optimize_ping">⚡ تحسين البنق</string>
+    <string name="btn_dns_boost">🌐 تعزيز DNS</string>
+    <string name="dns_status_off">DNS محلي</string>
+    <string name="dns_status_on">DNS محسّن نشط</string>
+    <string name="vpn_connecting">جاري الاتصال…</string>
+    <string name="vpn_connected">متصل ✅</string>
+    <string name="vpn_disconnected">غير متصل</string>
+    <string name="server_select">اختر الخادم</string>
+    <string name="server_auto">تلقائي (أفضل بنق)</string>
+    <string name="server_asia">آسيا</string>
+    <string name="server_me">الشرق الأوسط</string>
+    <string name="server_eu">أوروبا</string>
+
+    <!-- Permissions -->
+    <string name="perm_title">الأذونات المطلوبة</string>
+    <string name="perm_storage">الوصول للملفات</string>
+    <string name="perm_overlay">العرض فوق التطبيقات</string>
+    <string name="perm_shizuku">Shizuku (أذونات متقدمة)</string>
+    <string name="perm_grant">منح الإذن</string>
+    <string name="perm_granted">✅ ممنوح</string>
+    <string name="perm_denied">❌ مرفوض</string>
+    <string name="perm_storage_desc">مطلوب لقراءة وكتابة ملفات ببجي</string>
+    <string name="perm_overlay_desc">لعرض الماشر العائم فوق اللعبة</string>
+    <string name="perm_shizuku_desc">للوصول لملفات data/data المحمية</string>
+    <string name="btn_continue">متابعة →</string>
+</resources>
