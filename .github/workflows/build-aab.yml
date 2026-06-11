@@ -25,20 +25,11 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
+      - name: Setup Gradle 8.4
+        uses: gradle/actions/setup-gradle@v4
         with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
+          gradle-version: "8.4"
 
       - name: Setup Keystore
         env:
@@ -61,11 +52,11 @@ jobs:
             echo "KEYSTORE_PASSWORD=android" >> $GITHUB_ENV
             echo "KEY_ALIAS=androiddebugkey" >> $GITHUB_ENV
             echo "KEY_PASSWORD=android" >> $GITHUB_ENV
-            echo "⚠️ No keystore provided — auto-generated debug key used"
+            echo "⚠️ Auto-generated debug keystore used"
           fi
 
       - name: Build Release Bundle (AAB)
-        run: ./gradlew bundleRelease --stacktrace --no-daemon
+        run: gradle bundleRelease --stacktrace --no-daemon
 
       - name: Upload AAB Artifact
         uses: actions/upload-artifact@v4
@@ -73,13 +64,6 @@ jobs:
           name: DexUltra-Release-AAB
           path: app/build/outputs/bundle/release/app-release.aab
           retention-days: 90
-
-      - name: Generate build info
-        run: |
-          echo "Build completed at: $(date)" > build_info.txt
-          echo "Version: ${{ github.ref_name || inputs.version_name }}" >> build_info.txt
-          echo "Commit: ${{ github.sha }}" >> build_info.txt
-          cat build_info.txt
 
       - name: Create Release with AAB
         if: startsWith(github.ref, 'refs/tags/')
@@ -101,9 +85,7 @@ jobs:
             - 15+ نصيحة احترافية
 
             ### إصدارات ببجي المدعومة
-            - PUBG Mobile Global / KR / VN
-            - BGMI
-            - PUBG Mobile Lite
+            - PUBG Mobile Global / KR / VN / BGMI / Lite
           draft: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
