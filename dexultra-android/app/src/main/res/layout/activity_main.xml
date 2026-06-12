@@ -256,6 +256,7 @@
                         android:layout_height="48dp"
                         android:text="💉 حقن UserCustom.ini + Active.sav"
                         android:textSize="13sp"
+                        android:textAllCaps="false"
                         style="@style/DexButton.Primary" />
 
                     <TextView

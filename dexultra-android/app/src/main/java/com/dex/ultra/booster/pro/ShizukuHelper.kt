@@ -20,15 +20,15 @@ object ShizukuHelper {
     )
 
     fun isAvailable(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
         return try {
             Shizuku.pingBinder() &&
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-        } catch (e: Exception) {
-            false
-        }
+        } catch (e: Exception) { false }
     }
 
     fun isRunning(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
         return try { Shizuku.pingBinder() } catch (e: Exception) { false }
     }
 
@@ -37,6 +37,7 @@ object ShizukuHelper {
     }
 
     fun requestPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
         try {
             if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
                 Shizuku.requestPermission(REQUEST_CODE)
@@ -47,11 +48,12 @@ object ShizukuHelper {
     }
 
     /**
-     * Run command — tries Shizuku (ADB-level, no root) first, then libsu (root).
+     * Run a shell command — tries Shizuku (ADB-level) first, then libsu (root).
+     * Returns stdout string on success, null on failure.
      */
     fun runCommand(command: String): String? {
         if (isAvailable()) {
-            val result = runViaShizukuReflection(command)
+            val result = runViaShizuku(command)
             if (result != null) return result
         }
         return try {
@@ -65,59 +67,55 @@ object ShizukuHelper {
 
     fun writeFileViaTmp(destPath: String, content: String): Boolean {
         val tmpPath = "/data/local/tmp/dux_${System.currentTimeMillis()}.tmp"
-        val escapedContent = content.replace("'", "'\\''")
-        val writeCmd = "printf '%s' '$escapedContent' > '$tmpPath'"
-        val copyCmd = "cp -f '$tmpPath' '$destPath' && chmod 644 '$destPath' && rm -f '$tmpPath'"
 
-        if (runCommand(writeCmd) != null) {
-            return runCommand(copyCmd) != null
-        }
+        // Write to tmp using printf (handles most special chars)
+        val escapedContent = content.replace("\\", "\\\\").replace("'", "'\\''")
+        val writeCmd = "printf '%s' '$escapedContent' > '$tmpPath'"
+        val cpCmd   = "cp -f '$tmpPath' '$destPath' && chmod 644 '$destPath' && rm -f '$tmpPath'"
+
+        if (runCommand(writeCmd) != null && runCommand(cpCmd) != null) return true
+
         // Fallback: line-by-line echo
-        val lines = content.lines()
         val sb = StringBuilder()
-        lines.forEachIndexed { i, line ->
-            val esc = line.replace("\"", "\\\"")
-            if (i == 0) sb.append("echo \"$esc\" > '$tmpPath'")
-            else sb.append(" && echo \"$esc\" >> '$tmpPath'")
+        content.lines().forEachIndexed { i, line ->
+            val esc = line.replace("\\", "\\\\").replace("\"", "\\\"").replace("`", "\\`").replace("$", "\\$")
+            if (i == 0) sb.append("printf '%s\\n' \"$esc\" > '$tmpPath'")
+            else sb.append(" && printf '%s\\n' \"$esc\" >> '$tmpPath'")
         }
-        if (runCommand(sb.toString()) != null) {
-            return runCommand(copyCmd) != null
-        }
+        if (runCommand(sb.toString()) != null && runCommand(cpCmd) != null) return true
+
         return false
     }
 
-    fun pathExists(path: String): Boolean {
-        return runCommand("[ -e \"$path\" ] && echo yes || echo no") == "yes"
-    }
+    fun pathExists(path: String): Boolean =
+        runCommand("[ -e \"$path\" ] && echo yes || echo no") == "yes"
 
     fun getPubgDataPath(packageName: String) = "/data/data/$packageName"
 
-    // ── Internal ──────────────────────────────────────────────────────────
+    // ── Internal ─────────────────────────────────────────────────────────────
 
-    private fun runViaShizukuReflection(command: String): String? {
+    /**
+     * Use Shizuku.newProcess() DIRECTLY — no reflection needed.
+     * It's a public static API method in rikka.shizuku:api:13.x
+     */
+    private fun runViaShizuku(command: String): String? {
         return try {
-            val method = Shizuku::class.java.getDeclaredMethod(
-                "newProcess",
-                Array<String>::class.java,
-                Array<String>::class.java,
-                String::class.java
-            )
-            method.isAccessible = true
-            val process = method.invoke(
-                null,
+            val process = Shizuku.newProcess(
                 arrayOf("sh", "-c", command),
-                null as Array<String>?,
-                null as String?
-            ) as Process
-            val stdout = process.inputStream.bufferedReader().readText().trim()
+                null,
+                null
+            )
+            val stdout   = process.inputStream.bufferedReader().readText().trim()
+            val stderr   = process.errorStream.bufferedReader().readText().trim()
             val exitCode = process.waitFor()
+            if (stderr.isNotEmpty()) Log.d(TAG, "Shizuku stderr: $stderr")
             Log.d(TAG, "Shizuku[$exitCode]: $command")
             if (exitCode == 0) stdout.ifEmpty { "" } else null
-        } catch (e: NoSuchMethodException) {
-            Log.w(TAG, "Shizuku.newProcess not found in this version")
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Shizuku permission denied: ${e.message}")
             null
         } catch (e: Exception) {
-            Log.w(TAG, "Shizuku reflection error: ${e.message}")
+            Log.w(TAG, "Shizuku error: ${e.message}")
             null
         }
     }

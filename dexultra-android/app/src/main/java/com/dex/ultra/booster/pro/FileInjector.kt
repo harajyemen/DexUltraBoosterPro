@@ -46,12 +46,22 @@ object FileInjector {
         // ── Strategy 2: Shizuku (ADB-level) ──────────────────────────────
         if (useShizuku && ShizukuHelper.isAvailable()) {
             val dataDir = "/data/data/$pkg/files"
+            // Create target directory first (ADB-level has permission)
+            ShizukuHelper.runCommand("mkdir -p '$dataDir' 2>/dev/null; true")
+            ShizukuHelper.runCommand("chmod 771 '$dataDir' 2>/dev/null; true")
             val r1 = ShizukuHelper.writeFileViaTmp("$dataDir/UserCustom.ini", iniContent)
             val r2 = ShizukuHelper.writeFileViaTmp("$dataDir/Active.sav", savContent)
-            if (r1 || r2) {
-                ShizukuHelper.runCommand("chown $pkg:$pkg '$dataDir/UserCustom.ini' 2>/dev/null; true")
-                ShizukuHelper.runCommand("chown $pkg:$pkg '$dataDir/Active.sav' 2>/dev/null; true")
+            if (r1 && r2) {
+                ShizukuHelper.runCommand("chown $pkg:$pkg '$dataDir/UserCustom.ini' '$dataDir/Active.sav' 2>/dev/null; true")
                 Log.i(TAG, "✅ Injected via Shizuku to $dataDir")
+                return@withContext true
+            }
+            // Also try PUBG config path (UE4 style)
+            val cfgDir = "/sdcard/Android/data/$pkg/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/Config/Android"
+            ShizukuHelper.runCommand("mkdir -p '$cfgDir' 2>/dev/null; true")
+            val c1 = ShizukuHelper.writeFileViaTmp("$cfgDir/UserCustom.ini", iniContent)
+            if (c1) {
+                Log.i(TAG, "✅ Injected via Shizuku (UE4 path) to $cfgDir")
                 return@withContext true
             }
         }
