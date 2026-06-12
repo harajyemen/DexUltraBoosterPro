@@ -10,85 +10,77 @@ object FileInjector {
     private const val TAG = "FileInjector"
 
     /**
-     * Main entry point: inject 120fps UserCustom.ini and Active.sav
-     * into the selected PUBG version's data directory.
+     * نقطة الدخول الرئيسية: حقن ملفات UserCustom.ini و Active.sav لـ 120 إطاراً
+     * داخل مسارات اللعبة المتاحة بدون روت عبر بيئة Shizuku.
      *
-     * @param context   Application context
-     * @param versionIndex  0=Global, 1=KR, 2=VN, 3=BGMI, 4=Lite
-     * @param useShizuku    Use Shizuku for protected /data/data access
+     * @param context       سياق التطبيق
+     * @param versionIndex  0=العالمية, 1=الكورية, 2=الفيتنامية, 3=الهندية, 4=لايت
+     * @param useShizuku    استخدام Shizuku لتخطي حماية أندرويد 11+ بدون روت
      */
     suspend fun inject120FpsFiles(
         context: Context,
         versionIndex: Int,
-        useShizuku: Boolean
+        useShizuku: Boolean,
+        targetFps: Int = 120 // تمت إضافة قيمة افتراضية لضمان التوافق مع استدعاءات MainActivity المحدثة
     ): Boolean = withContext(Dispatchers.IO) {
 
         val pkg = ShizukuHelper.PUBG_PACKAGES[versionIndex]
             ?: return@withContext false
 
-        val baseDataPath = "/data/data/$pkg"
-        val filesPath = "$baseDataPath/files"
+        // تحديد المسارات الصحيحة داخل مجلد Android/data بدون روت بالكامل
+        val baseConfigDir = "/storage/emulated/0/Android/data/$pkg/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/Config/Android"
+        val baseSaveGamesDir = "/storage/emulated/0/Android/data/$pkg/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/SaveGames"
 
-        // Verify Shizuku access or warn
+        // التحقق من توافر Shizuku
         if (useShizuku && !ShizukuHelper.isAvailable()) {
             Log.w(TAG, "Shizuku requested but not available")
         }
 
         var success = false
 
-        // --- 1. Inject UserCustom.ini (120 FPS settings) ---
+        // --- 1. توليد وحقن ملف الإعدادات UserCustom.ini ---
         val userCustomContent = generateUserCustomIni()
-        val userCustomPaths = listOf(
-            "$filesPath/UserCustom.ini",
-            "$baseDataPath/shared_prefs/UserCustom.ini",
-            "$baseDataPath/UserCustom.ini"
-        )
+        val customIniPath = "$baseConfigDir/UserCustom.ini"
 
-        for (path in userCustomPaths) {
-            val result = if (useShizuku && ShizukuHelper.isAvailable()) {
-                ShizukuHelper.writeFileViaTmp(path, userCustomContent)
-            } else {
-                writeToExternalFallback(context, "UserCustom.ini", userCustomContent)
-            }
-            if (result) {
-                Log.i(TAG, "UserCustom.ini injected to $path")
-                success = true
-                break
-            }
+        val iniResult = if (useShizuku && ShizukuHelper.isAvailable()) {
+            ShizukuHelper.injectFileWithoutRoot(customIniPath, userCustomContent)
+        } else {
+            writeToExternalFallback(context, "UserCustom.ini", userCustomContent)
         }
 
-        // --- 2. Inject Active.sav (120 FPS device fingerprint) ---
+        if (iniResult) {
+            Log.i(TAG, "UserCustom.ini injected to $customIniPath")
+        }
+
+        // --- 2. توليد وحقن ملف الحفظ والدقة Active.sav ---
         val activeSavContent = generateActiveSav()
-        val activeSavPaths = listOf(
-            "$filesPath/Active.sav",
-            "$baseDataPath/Active.sav"
-        )
+        val activeSavPath = "$baseSaveGamesDir/Active.sav"
 
-        for (path in activeSavPaths) {
-            val result = if (useShizuku && ShizukuHelper.isAvailable()) {
-                ShizukuHelper.writeFileViaTmp(path, activeSavContent)
-            } else {
-                writeToExternalFallback(context, "Active.sav", activeSavContent)
-            }
-            if (result) {
-                Log.i(TAG, "Active.sav injected to $path")
-                success = true
-                break
-            }
+        val savResult = if (useShizuku && ShizukuHelper.isAvailable()) {
+            ShizukuHelper.injectFileWithoutRoot(activeSavPath, activeSavContent)
+        } else {
+            writeToExternalFallback(context, "Active.sav", activeSavContent)
         }
 
-        // --- 3. Set file permissions via Shizuku ---
-        if (useShizuku && ShizukuHelper.isAvailable()) {
-            ShizukuHelper.runCommand("chown $pkg:$pkg \"$filesPath/UserCustom.ini\" 2>/dev/null; true")
-            ShizukuHelper.runCommand("chown $pkg:$pkg \"$filesPath/Active.sav\" 2>/dev/null; true")
+        if (savResult) {
+            Log.i(TAG, "Active.sav injected to $activeSavPath")
+        }
+
+        // نجاح العملية الكلية يعتمد على حقن كلا الملفين معاً بنجاح
+        if (iniResult && savResult) {
+            success = true
+            
+            // --- 3. ضبط صلاحيات الملفات عبر Shizuku لضمان قراءة اللعبة لها ---
+            if (useShizuku && ShizukuHelper.isAvailable()) {
+                ShizukuHelper.runCommand("chmod 660 '$customIniPath' '$activeSavPath' 2>/dev/null; true")
+            }
         }
 
         return@withContext success
     }
 
     /**
-     * Generate UserCustom.ini content for 120 FPS + reduced lag settings.
-     * These are the custom graphics/performance settings for PUBG Mobile.
+     * توليد محتوى ملف UserCustom.ini المخصص لـ 120 إطاراً مع إعدادات تقليل اللغ والتقطيع.
      */
     private fun generateUserCustomIni(): String {
         return """
@@ -138,26 +130,25 @@ GraphicsPreset=5
     }
 
     /**
-     * Generate Active.sav content — device identity spoofed as 120fps-capable.
-     * This tells PUBG Mobile's servers that the device supports 120fps.
+     * توليد محتوى ملف Active.sav لتعديل البصمة التعريفية للجهاز لإجبار خوادم اللعبة على تفعيل الـ 120 فريم.
      */
     private fun generateActiveSav(): String {
         return """
 [Device]
-DeviceModel=Samsung Galaxy S23 Ultra
+DeviceModel=Samsung Galaxy S24 Ultra
 Manufacturer=Samsung
-DeviceID=SM-S918B
+DeviceID=SM-S928B
 SupportFrameRate120=1
 SupportFrameRate90=1
 SupportFrameRate60=1
 MaxSupportedFrameRate=120
 DevicePerformanceLevel=4
-GPU=Adreno 740
-CPU=Snapdragon 8 Gen 2
+GPU=Adreno 750
+CPU=Snapdragon 8 Gen 3
 RAM=12288
-ScreenWidth=2340
-ScreenHeight=1080
-DPI=393
+ScreenWidth=3088
+ScreenHeight=1440
+DPI=500
 [Settings]
 FrameRate=120
 GraphicsLevel=Ultra
@@ -171,8 +162,8 @@ AutoFPS=0
     }
 
     /**
-     * Fallback: write to external storage (OBB/documents folder)
-     * for manual copying when Shizuku is unavailable.
+     * المسار البديل والاحتياطي: في حال تعطل Shizuku أو عدم منحه الصلاحيات، يتم حفظ الملفات
+     * في مجلد التطبيق الخارجي ليتسنى للمستخدم نقلها يدوياً للمسار المناسب.
      */
     private fun writeToExternalFallback(
         context: Context,
@@ -182,7 +173,7 @@ AutoFPS=0
         return try {
             val dir = context.getExternalFilesDir("DexUltra_Output")
                 ?: return false
-            dir.mkdirs()
+            if (!dir.exists()) dir.mkdirs()
             val file = java.io.File(dir, filename)
             file.writeText(content)
             Log.i(TAG, "Saved $filename to ${file.absolutePath} (manual copy required)")
@@ -194,7 +185,7 @@ AutoFPS=0
     }
 
     /**
-     * Get output path for manually-injected files (when Shizuku unavailable).
+     * جلب مسار مجلد الحفظ الاحتياطي (عند تعطل الحقن التلقائي).
      */
     fun getOutputDirectory(context: Context): String {
         return context.getExternalFilesDir("DexUltra_Output")?.absolutePath ?: ""
