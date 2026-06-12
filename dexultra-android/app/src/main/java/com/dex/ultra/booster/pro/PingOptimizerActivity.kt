@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -25,8 +26,11 @@ class PingOptimizerActivity : AppCompatActivity() {
     private val vpnPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == RESULT_OK) startDnsVpn()
-        else Toast.makeText(this, "لم يتم منح إذن VPN", Toast.LENGTH_SHORT).show()
+        if (result.resultCode == RESULT_OK) {
+            startDnsVpn()
+        } else {
+            Toast.makeText(this, "لم يتم منح إذن VPN", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private val dnsServers = listOf(
@@ -96,7 +100,7 @@ class PingOptimizerActivity : AppCompatActivity() {
             }
 
             delay(400)
-            binding.tvPingStatus.text = "✅ ${getString(R.string.vpn_connected)}"
+            binding.tvPingStatus.text = "✅ تم تطبيق تحسين الشبكة بذكاء"
             Toast.makeText(
                 this@PingOptimizerActivity,
                 "✅ تم تحسين البنق!\nDNS: ${bestDns.primary}",
@@ -120,37 +124,48 @@ class PingOptimizerActivity : AppCompatActivity() {
                 startDnsVpn()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "تعذّر تحضير VPN: ${e.message}", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "تعذّر تحضير الـ VPN: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun startDnsVpn() {
-        isDnsActive = true
-        binding.btnDnsBoost.text = "🔴 إيقاف DNS"
-        binding.tvDnsStatus.text = getString(R.string.dns_status_on)
+        try {
+            isDnsActive = true
+            binding.btnDnsBoost.text = "🔴 إيقاف DNS"
+            binding.tvDnsStatus.text = getString(R.string.dns_status_on)
 
-        val selected = dnsServers.getOrElse(binding.spinnerDns.selectedItemPosition) { dnsServers[0] }
+            val selected = dnsServers.getOrElse(binding.spinnerDns.selectedItemPosition) { dnsServers[0] }
 
-        val serviceIntent = Intent(this, DnsVpnService::class.java).apply {
-            putExtra("dns_primary", selected.primary)
-            putExtra("dns_secondary", selected.secondary)
+            val serviceIntent = Intent(this, DnsVpnService::class.java).apply {
+                putExtra("dns_primary", selected.primary)
+                putExtra("dns_secondary", selected.secondary)
+            }
+
+            // تشغيل الخدمة بأمان بالتوافق مع الأنظمة الحديثة والقديمة
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ContextCompat.startForegroundService(this, serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+
+            Toast.makeText(this, "✅ DNS نشط: ${selected.name}", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            isDnsActive = false
+            binding.btnDnsBoost.text = getString(R.string.btn_dns_boost)
+            binding.tvDnsStatus.text = getString(R.string.dns_status_off)
+            Toast.makeText(this, "فشل بدء الخدمة: ${e.message}", Toast.LENGTH_LONG).show()
         }
-
-        // Use startForegroundService on API 26+ to avoid IllegalStateException
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
-
-        Toast.makeText(this, "✅ DNS نشط: ${selected.name}", Toast.LENGTH_SHORT).show()
     }
 
     private fun stopDnsVpn() {
         isDnsActive = false
         binding.btnDnsBoost.text = getString(R.string.btn_dns_boost)
         binding.tvDnsStatus.text = getString(R.string.dns_status_off)
-        stopService(Intent(this, DnsVpnService::class.java))
+        try {
+            stopService(Intent(this, DnsVpnService::class.java))
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun findBestDns(): DnsServer {
@@ -169,7 +184,7 @@ class PingOptimizerActivity : AppCompatActivity() {
     private fun measureDnsPing(ip: String): Long {
         return try {
             val t = System.currentTimeMillis()
-            InetAddress.getByName(ip)
+            InetAddress.getByName(ip).isReachable(1000)
             System.currentTimeMillis() - t
         } catch (_: Exception) { Long.MAX_VALUE }
     }
@@ -184,10 +199,12 @@ class PingOptimizerActivity : AppCompatActivity() {
             while (true) {
                 val ping = withContext(Dispatchers.IO) { measurePubgPing() }
                 binding.tvPingValue.text = if (ping < Long.MAX_VALUE) "${ping}ms" else "--"
+                
+                // استخدام ContextCompat لجلب الألوان بأمان منعاً للانهيار
                 val color = when {
-                    ping < 40 -> getColor(R.color.success)
-                    ping < 80 -> getColor(R.color.warning)
-                    else      -> getColor(R.color.error)
+                    ping < 40 -> ContextCompat.getColor(this@PingOptimizerActivity, R.color.success)
+                    ping < 80 -> ContextCompat.getColor(this@PingOptimizerActivity, R.color.warning)
+                    else      -> ContextCompat.getColor(this@PingOptimizerActivity, R.color.error)
                 }
                 binding.tvPingValue.setTextColor(color)
                 delay(3000)
@@ -198,18 +215,29 @@ class PingOptimizerActivity : AppCompatActivity() {
     private fun measurePubgPing(): Long {
         return try {
             val t = System.currentTimeMillis()
-            InetAddress.getByName("kr-pubg-gt.pubg.com").isReachable(2000)
-            System.currentTimeMillis() - t
+            val address = InetAddress.getByName("kr-pubg-gt.pubg.com")
+            if (address.isReachable(1500)) {
+                System.currentTimeMillis() - t
+            } else {
+                throw Exception()
+            }
         } catch (_: Exception) {
             try {
                 val t = System.currentTimeMillis()
-                InetAddress.getByName("8.8.8.8")
-                System.currentTimeMillis() - t
+                val backupAddress = InetAddress.getByName("8.8.8.8")
+                if (backupAddress.isReachable(1500)) {
+                    System.currentTimeMillis() - t
+                } else {
+                    Long.MAX_VALUE
+                }
             } catch (_: Exception) { Long.MAX_VALUE }
         }
     }
 
-    override fun onSupportNavigateUp(): Boolean { finish(); return true }
+    override fun onSupportNavigateUp(): Boolean { 
+        finish()
+        return true 
+    }
 }
 
 data class DnsServer(val name: String, val primary: String, val secondary: String)
