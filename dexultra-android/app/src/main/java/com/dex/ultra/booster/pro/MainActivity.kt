@@ -14,7 +14,6 @@ import androidx.lifecycle.lifecycleScope
 import com.dex.ultra.booster.pro.databinding.ActivityMainBinding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import rikka.shizuku.Shizuku
 
 class MainActivity : AppCompatActivity() {
 
@@ -27,6 +26,7 @@ class MainActivity : AppCompatActivity() {
     ) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()) {
             Toast.makeText(this, "✅ تم منح إذن الملفات — يمكنك الآن حقن الملفات", Toast.LENGTH_SHORT).show()
+            binding.tvInjectStatus.text = "✨ إذن الملفات مفعّل، جاهز للحقن المباشر"
         }
     }
 
@@ -39,9 +39,14 @@ class MainActivity : AppCompatActivity() {
         setupBoostButton()
         setupFileInjection()
         setupOverlayToggle()
-        updateShizukuStatus()
         startStatsUpdate()
         checkStoragePermission()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // تحديث حالة اتصال الخدمة للمستخدم في كل مرة يعود فيها إلى التطبيق
+        updateShizukuStatus()
     }
 
     private fun setupBottomNav() {
@@ -101,7 +106,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupFileInjection() {
-        // PUBG versions
+        // قائمة نسخ ببجي للتعديل
         binding.spinnerPubgVersion.adapter = android.widget.ArrayAdapter(
             this,
             android.R.layout.simple_spinner_dropdown_item,
@@ -114,13 +119,13 @@ class MainActivity : AppCompatActivity() {
             )
         )
 
-        // FPS options
+        // خيارات معدل تحديث الشاشة فريم
         binding.spinnerFps.adapter = android.widget.ArrayAdapter(
             this,
             android.R.layout.simple_spinner_dropdown_item,
             listOf("60 FPS", "90 FPS", "120 FPS ⭐", "144 FPS")
         )
-        binding.spinnerFps.setSelection(2) // Default 120 FPS
+        binding.spinnerFps.setSelection(2) // افتراضياً 120 فريم
 
         binding.btnInjectFiles.setOnClickListener { injectPubgFiles() }
     }
@@ -131,20 +136,23 @@ class MainActivity : AppCompatActivity() {
             0 -> 60; 1 -> 90; 2 -> 120; else -> 144
         }
 
-        // Check if MANAGE_EXTERNAL_STORAGE needed
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+        val shizukuActive = ShizukuHelper.isAvailable()
+
+        // ميزة ذكية: إذا كان تطبيق Shizuku غير نشط، نتحقق من توفر إذن إدارة الملفات العام كبديل
+        if (!shizukuActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
             showStoragePermissionDialog()
             return
         }
 
         lifecycleScope.launch {
-            binding.tvInjectStatus.text = "⏳ جاري حقن ملفات ${fps} FPS…"
+            binding.tvInjectStatus.text = "⏳ جاري حقن ملفات ${fps} FPS بدون روت…"
             binding.btnInjectFiles.isEnabled = false
 
+            // استدعاء ملف الفايل إنجيكتور المطور
             val success = FileInjector.inject120FpsFiles(
                 applicationContext,
                 version,
-                isShizukuAvailable(),
+                shizukuActive,
                 fps
             )
 
@@ -154,17 +162,17 @@ class MainActivity : AppCompatActivity() {
                 binding.tvInjectStatus.text = "✅ تم الحقن بنجاح – ${fps} FPS"
                 Toast.makeText(
                     this@MainActivity,
-                    "✅ تم حقن ملفات ${fps}FPS بنجاح!\nأعد تشغيل اللعبة",
+                    "✅ تم تطبيق ملفات ${fps}FPS بنجاح!\nقم بتشغيل اللعبة الآن.",
                     Toast.LENGTH_LONG
                 ).show()
             } else {
                 val outPath = FileInjector.getOutputDirectory(applicationContext)
-                binding.tvInjectStatus.text = "⚠️ تم الحفظ في: $outPath\nانسخها يدوياً لمجلد اللعبة"
-                Toast.makeText(
-                    this@MainActivity,
-                    "⚠️ تعذّر الحقن المباشر\nالملفات جاهزة في:\n$outPath",
-                    Toast.LENGTH_LONG
-                ).show()
+                binding.tvInjectStatus.text = "⚠️ لم يتم الحقن المباشر\nالملفات بداخل: $outPath"
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("تنبيه حول الحقن")
+                    .setMessage("فشل الحقن التلقائي.\n\nالسبب: قد لا تكون النسخة المختارة مثبتة على جهازك، أو تحتاج لتشغيل تطبيق Shizuku أولاً.\n\nتم حفظ الملفات احتياطياً في المجلد الخارجي للتطبيق.")
+                    .setPositiveButton("حسناً", null)
+                    .show()
             }
         }
     }
@@ -190,8 +198,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateShizukuStatus() {
-        val connected = isShizukuAvailable()
-        binding.tvShizukuStatus.text = if (connected) "✅ Shizuku" else "⚠️ Shizuku"
+        val connected = ShizukuHelper.isAvailable()
+        binding.tvShizukuStatus.text = if (connected) "✅ Shizuku متصل" else "❌ Shizuku غير مفعّل"
         binding.tvShizukuStatus.setTextColor(
             getColor(if (connected) R.color.success else R.color.warning)
         )
@@ -200,21 +208,14 @@ class MainActivity : AppCompatActivity() {
             binding.btnConnectShizuku.visibility = android.view.View.VISIBLE
             binding.btnConnectShizuku.setOnClickListener {
                 try {
-                    Shizuku.requestPermission(1001)
+                    ShizukuHelper.requestPermission()
                 } catch (e: Exception) {
-                    Toast.makeText(this, "Shizuku غير مثبّت — حمّله من المتجر", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Shizuku غير مثبّت على هذا الجهاز", Toast.LENGTH_SHORT).show()
                 }
             }
         } else {
             binding.btnConnectShizuku.visibility = android.view.View.GONE
         }
-    }
-
-    private fun isShizukuAvailable(): Boolean {
-        return try {
-            Shizuku.pingBinder() &&
-            Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED
-        } catch (_: Exception) { false }
     }
 
     private fun startStatsUpdate() {
@@ -228,9 +229,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkStoragePermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
-            // Show non-blocking hint — don't force dialog on startup
-            binding.tvInjectStatus.text = "💡 اضغط 'حقن' لطلب إذن الوصول للملفات"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager() && !ShizukuHelper.isAvailable()) {
+            binding.tvInjectStatus.text = "💡 يمكنك تشغيل Shizuku أو تفعيل إذن الملفات للحقن التلقائي"
         }
     }
 
@@ -238,10 +238,10 @@ class MainActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle("إذن الوصول للملفات")
             .setMessage(
-                "لحقن ملفات ببجي مباشرةً، يحتاج التطبيق إذن 'إدارة جميع الملفات'.\n\n" +
-                "في الصفحة التالية، فعّل الإذن لـ DexUltra Booster Pro."
+                "في حال عدم تشغيل تطبيق Shizuku، يحتاج التطبيق إلى إذن 'إدارة جميع الملفات' البديل لتعديل جرافيكس اللعبة بنجاح.\n\n" +
+                "في الصفحة التالية، تذكر تفعيل الخيار لـ DexUltra Booster Pro."
             )
-            .setPositiveButton("منح الإذن") { _, _ ->
+            .setPositiveButton("منح الإذن البديل") { _, _ ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     val intent = Intent(
                         Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
@@ -251,7 +251,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             .setNegativeButton("لاحقاً") { _, _ ->
-                Toast.makeText(this, "يمكنك الحقن بدون Shizuku إذا منحت الإذن لاحقاً", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "يمكنك تشغيل خدمة Shizuku لتجنب هذا الإذن بالكامل", Toast.LENGTH_LONG).show()
             }
             .show()
     }
