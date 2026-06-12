@@ -13,14 +13,13 @@ object FileInjector {
     private const val TAG = "FileInjector"
 
     /**
-     * Inject UserCustom.ini + Active.sav into the selected PUBG version.
-     * Strategy order:
-     *   1. Direct write to /sdcard/Android/data/<pkg>/files/ (works on most devices)
-     *   2. MANAGE_EXTERNAL_STORAGE path (Android 11+)
-     *   3. Shizuku (ADB-level, no root required)
-     *   4. libsu root fallback
+     * حقن ملفات UserCustom.ini + Active.sav داخل نسخة ببجي المحددة بدون روت.
+     * استراتيجية العمل:
+     *   1. الكتابة المباشرة إذا كان الهاتف بنظام أندرويد قديم أو ممتلكاً لصلاحية MANAGE_EXTERNAL_STORAGE.
+     *   2. استخدام بيئة Shizuku (صلاحيات ADB) لتخطي قيود أندرويد 11+ وحقن الملفات في مسارات اللعبة مباشرة.
+     *   3. حفظ الملفات في مجلد التطبيق الخارجي كخيار احتياطي متاح للمستخدم لنقلها يدوياً.
      *
-     * @param versionIndex  0=Global,1=KR,2=VN,3=BGMI,4=Lite
+     * @param versionIndex  0=العالمية, 1=الكورية, 2=الفيتنامية, 3=الهندية, 4=لايت
      * @param targetFps     60 | 90 | 120 | 144
      */
     suspend fun inject120FpsFiles(
@@ -34,39 +33,38 @@ object FileInjector {
         val iniContent = generateUserCustomIni(targetFps)
         val savContent = generateActiveSav(targetFps)
 
-        // ── Strategy 1: write directly to sdcard Android/data path ─────────
-        val sdcard = Environment.getExternalStorageDirectory().absolutePath
-        val sdcardDir = "$sdcard/Android/data/$pkg/files"
-        val sdcardResult = writeSdcard(sdcardDir, iniContent, savContent)
-        if (sdcardResult) {
-            Log.i(TAG, "✅ Injected via sdcard: $sdcardDir")
+        // تحديد المسارات الصحيحة داخل مجلدات اللعبة لجميع النسخ
+        val baseConfigDir = "/storage/emulated/0/Android/data/$pkg/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/Config/Android"
+        val baseSaveGamesDir = "/storage/emulated/0/Android/data/$pkg/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/SaveGames"
+
+        // ── الاستراتيجية 1: الكتابة المباشرة (للأنظمة القديمة أو عند منح صلاحية الوصول لجميع الملفات) ─────────
+        if (writeSdcardDirectly(baseConfigDir, baseSaveGamesDir, iniContent, savContent)) {
+            Log.i(TAG, "✅ Injected directly via Storage File API")
             return@withContext true
         }
 
-        // ── Strategy 2: Shizuku (ADB-level) ──────────────────────────────
+        // ── الاستراتيجية 2: الحقن الذكي عبر Shizuku (تخطي قيود أندرويد 11+ بدون روت) ──────────────────────────────
         if (useShizuku && ShizukuHelper.isAvailable()) {
-            val dataDir = "/data/data/$pkg/files"
-            // Create target directory first (ADB-level has permission)
-            ShizukuHelper.runCommand("mkdir -p '$dataDir' 2>/dev/null; true")
-            ShizukuHelper.runCommand("chmod 771 '$dataDir' 2>/dev/null; true")
-            val r1 = ShizukuHelper.writeFileViaTmp("$dataDir/UserCustom.ini", iniContent)
-            val r2 = ShizukuHelper.writeFileViaTmp("$dataDir/Active.sav", savContent)
+            Log.i(TAG, "🔄 Attempting Shizuku injection for package: $pkg")
+
+            // 1. إنشاء المجلدات الفرعية للعبة أولاً لضمان عدم فشل عمليات النقل
+            ShizukuHelper.runCommand("mkdir -p '$baseConfigDir' '$baseSaveGamesDir' 2>/dev/null; true")
+
+            // 2. حقن ملف الإعدادات UserCustom.ini
+            val r1 = ShizukuHelper.injectFileWithoutRoot("$baseConfigDir/UserCustom.ini", iniContent)
+
+            // 3. حقن ملف الحفظ Active.sav
+            val r2 = ShizukuHelper.injectFileWithoutRoot("$baseSaveGamesDir/Active.sav", savContent)
+
             if (r1 && r2) {
-                ShizukuHelper.runCommand("chown $pkg:$pkg '$dataDir/UserCustom.ini' '$dataDir/Active.sav' 2>/dev/null; true")
-                Log.i(TAG, "✅ Injected via Shizuku to $dataDir")
-                return@withContext true
-            }
-            // Also try PUBG config path (UE4 style)
-            val cfgDir = "/sdcard/Android/data/$pkg/files/UE4Game/ShadowTrackerExtra/ShadowTrackerExtra/Saved/Config/Android"
-            ShizukuHelper.runCommand("mkdir -p '$cfgDir' 2>/dev/null; true")
-            val c1 = ShizukuHelper.writeFileViaTmp("$cfgDir/UserCustom.ini", iniContent)
-            if (c1) {
-                Log.i(TAG, "✅ Injected via Shizuku (UE4 path) to $cfgDir")
+                // ضبط صلاحيات الملفات لتتمكن اللعبة من قراءتها وتطبيق الـ 120 فريم
+                ShizukuHelper.runCommand("chmod 660 '$baseConfigDir/UserCustom.ini' '$baseSaveGamesDir/Active.sav' 2>/dev/null; true")
+                Log.i(TAG, "✅ Injected successfully via Shizuku (No-Root)")
                 return@withContext true
             }
         }
 
-        // ── Strategy 3: write to app external files (manual copy fallback) ─
+        // ── الاستراتيجية 3: مجلد الحفظ الاحتياطي (في حال فشل الطرق السابقة بالكامل) ─
         val fallbackDir = context.getExternalFilesDir("DexUltra_Output")
         if (fallbackDir != null) {
             fallbackDir.mkdirs()
@@ -82,20 +80,29 @@ object FileInjector {
         return@withContext false
     }
 
-    private fun writeSdcard(dir: String, iniContent: String, savContent: String): Boolean {
+    /**
+     * دالة مساعدة للكتابة المباشرة عبر الـ Storage API التقليدي
+     */
+    private fun writeSdcardDirectly(configPath: String, savePath: String, iniContent: String, savContent: String): Boolean {
         return try {
-            // Check if already accessible (pre-Android 11, or MANAGE_EXTERNAL_STORAGE granted)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 if (!Environment.isExternalStorageManager()) return false
             }
-            val d = File(dir)
-            if (!d.exists()) d.mkdirs()
-            if (!d.canWrite()) return false
-            File(d, "UserCustom.ini").writeText(iniContent)
-            File(d, "Active.sav").writeText(savContent)
-            true
+            
+            val configDir = File(configPath)
+            val saveDir = File(savePath)
+            
+            if (!configDir.exists()) configDir.mkdirs()
+            if (!saveDir.exists()) saveDir.mkdirs()
+            
+            if (configDir.canWrite() && saveDir.canWrite()) {
+                File(configDir, "UserCustom.ini").writeText(iniContent)
+                File(saveDir, "Active.sav").writeText(savContent)
+                return true
+            }
+            false
         } catch (e: Exception) {
-            Log.w(TAG, "sdcard write failed: ${e.message}")
+            Log.w(TAG, "Direct storage write failed: ${e.message}")
             false
         }
     }
@@ -103,7 +110,7 @@ object FileInjector {
     fun getOutputDirectory(context: Context): String =
         context.getExternalFilesDir("DexUltra_Output")?.absolutePath ?: ""
 
-    // ── Content generators ────────────────────────────────────────────────
+    // ── مولدات نصوص الملفات الداعمة للـ 120 إطار ────────────────────────────────────────────────
 
     fun generateUserCustomIni(fps: Int = 120): String {
         val fpsValue = fps.coerceIn(30, 144)
